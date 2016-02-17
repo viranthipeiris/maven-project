@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  maven-project
+  Demonstrates the usage of maven in the context of mule
+-->
+
+<mule 
+  xmlns="http://www.mulesoft.org/schema/mule/core" 
+  xmlns:db="http://www.mulesoft.org/schema/mule/db" 
+  xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+  xmlns:http="http://www.mulesoft.org/schema/mule/http" 
+  xmlns:jms="http://www.mulesoft.org/schema/mule/jms" 
+  xmlns:json="http://www.mulesoft.org/schema/mule/json" 
+  xmlns:spring="http://www.springframework.org/schema/beans" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+  http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+  http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+  http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd 
+  http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+  http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd">
+
+  <!-- base config for http entry point -->
+  <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081"/>
+
+  <!-- connection to derby in-memory database -->
+  <db:derby-config name="Derby_Configuration" url="jdbc:derby:memory:muleEmbeddedDB;create=true"/>
+
+  <!-- creates db on startup via afterPropertiesSet() method -->
+  <spring:beans>
+    <spring:bean id="Bean" name="Bean" class="com.mulesoft.training.Database"/>
+  </spring:beans>
+
+  <!-- base config for embedded AMQ broker -->
+  <jms:activemq-connector name="activeMQ" brokerURL="vm://localhost" validateConnections="true"/>
+
+  <!-- returns static message: Hello Maven -->
+  <flow name="mavenFlow">
+    <http:listener config-ref="HTTP_Listener_Configuration" path="/maven"/>
+    <set-payload value="#['Hello Maven']"/>
+  </flow>
+
+  <!-- queues database result to be logged -->
+  <flow name="retrieveFlights">
+    <http:listener config-ref="HTTP_Listener_Configuration" path="/flights"/>
+    <db:select config-ref="Derby_Configuration">
+      <db:parameterized-query><![CDATA[SELECT * FROM flights]]></db:parameterized-query>
+    </db:select>
+    <json:object-to-json-transformer/>
+    <jms:outbound-endpoint connector-ref="activeMQ" queue="flights"/>
+  </flow>
+
+  <!-- consumes queued database messages and logs them -->
+  <flow name="logFlights">
+    <jms:inbound-endpoint queue="flights" connector-ref="activeMQ"/>
+    <logger message="#[message.payload]" level="INFO"/>
+  </flow>
+
+</mule>
